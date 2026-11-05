@@ -5,7 +5,7 @@ Shared build, test and runtime files for my Blender add-ons. Each add-on repo ge
 ## What is in it
 
     tools/      build.py, _run_all.py, _run_in_blender.py   always synced
-    runtime/    auto_load.py, progress.py, updater/         optional extras
+    runtime/    auto_load.py, progress.py, lifecycle.py, updater/   optional extras
     sync_kit.py                                             copies them, detects drift
     tests/      the kit's own tests (fake Blender, no real one needed)
 
@@ -22,7 +22,7 @@ Layout the tools expect: one add-on folder in the repo root, plus `tests/`.
 The folder name is the add-on id: lowercase letters, digits, underscores, starting with a letter (no hyphens). `build.py` refuses anything else, because Blender and the updater derive module and operator names from it.
 
     python path/to/kit/sync_kit.py .                       tools only
-    python path/to/kit/sync_kit.py . --with auto_load progress
+    python path/to/kit/sync_kit.py . --with auto_load progress lifecycle
     python path/to/kit/sync_kit.py . --check               what differs from the kit?
 
 Then `python build.py`.
@@ -61,6 +61,7 @@ The updater needs the legacy layout (`bl_info`, add-on installed under `scripts/
 ## Other extras
 
 - `auto_load`: registers every class in the package in dependency order. In `__init__.py`: `auto_load.init()` then `auto_load.register()` / `auto_load.unregister()`.
+- `lifecycle`: a Blender test (`tests/blender/lifecycle.py`) that disables and re-enables the add-on three times. An error while disabling or enabling fails it, and enabling again must bring back exactly the properties the add-on attached to Blender's own types. It needs no setup.
 - `progress`: `with_progress(context, items, minimum=2)` shows Blender's progress cursor for loops with several items and always clears it.
 
 ## Changing the kit

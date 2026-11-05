@@ -63,14 +63,16 @@ def register():
             module.register()
 
 def unregister():
-    for cls in reversed(ordered_classes):
-        bpy.utils.unregister_class(cls)
-
-    for module in modules:
+    # Reverse of register(): remove the properties that point at the property
+    # groups first, then unregister the classes.
+    for module in reversed(modules):
         if module.__name__ == __name__:
             continue
         if hasattr(module, "unregister"):
             module.unregister()
+
+    for cls in reversed(ordered_classes):
+        bpy.utils.unregister_class(cls)
 
 
 # Import modules

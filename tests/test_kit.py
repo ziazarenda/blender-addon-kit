@@ -214,7 +214,16 @@ class BuildTests(unittest.TestCase):
     def test_blender_missing_is_loud(self):
         root = self.repo(tests={"a.py": PASSING_TEST})
         env = dict(os.environ, PATH="/nonexistent", BLENDER="")
-        result = subprocess.run([sys.executable, "build.py", "--blender", "/nope"], cwd=root,
+        # build.py also tries fixed locations such as /usr/bin/blender, which exist on
+        # many machines. Empty that list so the test does not depend on the computer.
+        code = ("import importlib.util, sys\n"
+                "spec = importlib.util.spec_from_file_location('kit_build', 'build.py')\n"
+                "module = importlib.util.module_from_spec(spec)\n"
+                "spec.loader.exec_module(module)\n"
+                "module.BLENDER_FALLBACKS = ()\n"
+                "sys.argv = ['build.py', '--blender', '/nope']\n"
+                "module.main()\n")
+        result = subprocess.run([sys.executable, "-c", code], cwd=root,
                                 capture_output=True, text=True, env=env)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("Blender not found", result.stdout)
@@ -250,6 +259,11 @@ class SyncTests(unittest.TestCase):
         self.assertTrue((self.root / "demo/auto_load.py").exists())
         sync(self.root)
         self.assertEqual(json.loads((self.root / ".kit.json").read_text())["extras"], ["auto_load", "progress"])
+
+    def test_lifecycle_extra_goes_to_the_blender_tests(self):
+        sync(self.root, "--with", "lifecycle")
+        self.assertTrue((self.root / "tests/blender/lifecycle.py").exists())
+        self.assertIn("lifecycle", json.loads((self.root / ".kit.json").read_text())["extras"])
 
     def test_check_reports_and_changes_nothing(self):
         sync(self.root)
@@ -387,6 +401,51 @@ class RuntimeTests(unittest.TestCase):
             module.toposort({A: {B}, B: {A}, C: set()})
 
         self.assertIn("A, B", str(caught.exception))
+
+    def test_auto_load_unregisters_in_the_reverse_order_of_register(self):
+        import importlib.util
+        import types
+        from unittest import mock
+
+        order = []
+        fake_bpy = types.ModuleType("bpy")
+        fake_bpy.app = types.SimpleNamespace(version=(4, 0, 0))
+        fake_bpy.utils = types.SimpleNamespace(
+            register_class=lambda cls: order.append(("register_class", cls.__name__)),
+            unregister_class=lambda cls: order.append(("unregister_class", cls.__name__)))
+
+        with mock.patch.dict(sys.modules, {"bpy": fake_bpy}):
+            spec = importlib.util.spec_from_file_location("kit_auto_load_order", KIT / "runtime/auto_load.py")
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+
+        class A: pass
+        class B: pass
+
+        def part(name, with_hooks=True):
+            hooks = {"register": lambda: order.append(("register", name)),
+                     "unregister": lambda: order.append(("unregister", name))} if with_hooks else {}
+            return types.SimpleNamespace(__name__=name, **hooks)
+
+        module.ordered_classes = [A, B]
+        module.modules = [part("first"), part("no_hooks", False), part("second")]
+        module.register()
+        order.append(("--",))
+        module.unregister()
+
+        self.assertEqual(order, [
+            ("register_class", "A"), ("register_class", "B"),
+            ("register", "first"), ("register", "second"),
+            ("--",),
+            ("unregister", "second"), ("unregister", "first"),
+            ("unregister_class", "B"), ("unregister_class", "A"),
+        ])
+
+    def test_lifecycle_test_fails_on_errors_and_ends_with_the_finish_line(self):
+        source = (KIT / "runtime/lifecycle.py").read_text(encoding="utf-8")
+        self.assertIn("handle_error=fail", source)
+        self.assertIn('print(f"\\nALL {checks} CHECKS PASSED")', source)
+        self.assertIn('ADDON_MODULE', source)
 
     def test_updater_version_text(self):
         source = (KIT / "runtime/updater/addon_updater_ops.py").read_text()

@@ -16,6 +16,7 @@ Always synced (the tools):
 Optional extras (--with, remembered in <repo>/.kit.json):
     auto_load  -> <addon>/auto_load.py
     progress   -> <addon>/helpers/progress.py   (with_progress for long loops)
+    lifecycle  -> tests/blender/lifecycle.py   (disable / re-enable test for any add-on)
     updater    -> <addon>/addon_updater.py, addon_updater_ops.py, vendor/humanize
                   (GitHub updater for LEGACY add-ons, the default update path.
                   Not for extensions. Configure it in the
@@ -34,7 +35,7 @@ from pathlib import Path
 
 KIT = Path(__file__).resolve().parent
 MANIFEST = ".kit.json"
-EXTRAS = ("auto_load", "progress", "updater")
+EXTRAS = ("auto_load", "progress", "lifecycle", "updater")
 
 REQUIRED_CONSTANTS = ("ADDON_ID", "GITHUB_USER", "GITHUB_REPO", "GITHUB_BRANCH")
 
@@ -64,6 +65,9 @@ def plan(addon_dir_name, extras):
 
     if "progress" in extras:
         pairs.append((KIT / "runtime" / "progress.py", f"{base}/helpers/progress.py"))
+
+    if "lifecycle" in extras:
+        pairs.append((KIT / "runtime" / "lifecycle.py", "tests/blender/lifecycle.py"))
 
     if "updater" in extras:
         updater = KIT / "runtime" / "updater"
